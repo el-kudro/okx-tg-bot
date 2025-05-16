@@ -1,4 +1,5 @@
 import os
+import time
 import hmac
 import base64
 import hashlib
@@ -16,9 +17,8 @@ def _get_server_timestamp():
     try:
         res = requests.get("https://www.okx.com/api/v5/public/time")
         return res.json()["data"][0]["ts"]
-    except Exception as e:
-        print("Ошибка при получении времени:", e)
-        return None
+    except:
+        return str(int(time.time() * 1000))
 
 def _signature(timestamp, method, request_path, body=""):
     message = f"{timestamp}{method}{request_path}{body}"
@@ -28,9 +28,6 @@ def _signature(timestamp, method, request_path, body=""):
 def place_order(inst_id, side, px, ord_type, sz):
     url = "https://www.okx.com/api/v5/trade/order"
     timestamp = _get_server_timestamp()
-
-    if not timestamp:
-        return {"error": "Не удалось получить время от OKX"}
 
     body = {
         "instId": inst_id,
