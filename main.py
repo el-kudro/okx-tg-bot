@@ -11,6 +11,7 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 TELEGRAM_USER_ID = os.getenv("TELEGRAM_USER_ID")
+TRADE_AMOUNT = os.getenv("TRADE_AMOUNT", "0.01")  # ← подгружаем сумму сделки
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
@@ -67,7 +68,7 @@ def execute_trade(call):
         side="buy",
         px=price,
         ord_type="market",
-        sz="0.01"
+        sz=TRADE_AMOUNT
     )
 
     bot.send_message(call.message.chat.id, f"✅ Ордер отправлен по {inst_id}: {response}")
