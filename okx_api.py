@@ -1,11 +1,9 @@
 import os
-import time
 import hmac
 import base64
 import hashlib
 import requests
 import json
-from datetime import datetime, timezone 
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -14,6 +12,14 @@ API_KEY = os.getenv("OKX_API_KEY")
 API_SECRET = os.getenv("OKX_API_SECRET")
 API_PASSPHRASE = os.getenv("OKX_API_PASSPHRASE")
 
+def _get_server_timestamp():
+    try:
+        res = requests.get("https://www.okx.com/api/v5/public/time")
+        return res.json()["data"][0]["ts"]
+    except Exception as e:
+        print("Ошибка при получении времени:", e)
+        return None
+
 def _signature(timestamp, method, request_path, body=""):
     message = f"{timestamp}{method}{request_path}{body}"
     mac = hmac.new(API_SECRET.encode(), message.encode(), hashlib.sha256)
@@ -21,7 +27,11 @@ def _signature(timestamp, method, request_path, body=""):
 
 def place_order(inst_id, side, px, ord_type, sz):
     url = "https://www.okx.com/api/v5/trade/order"
-    timestamp = datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+    timestamp = _get_server_timestamp()
+
+    if not timestamp:
+        return {"error": "Не удалось получить время от OKX"}
+
     body = {
         "instId": inst_id,
         "tdMode": "cross",
@@ -30,6 +40,7 @@ def place_order(inst_id, side, px, ord_type, sz):
         "px": px,
         "sz": sz
     }
+
     headers = {
         "Content-Type": "application/json",
         "OK-ACCESS-KEY": API_KEY,
@@ -37,5 +48,6 @@ def place_order(inst_id, side, px, ord_type, sz):
         "OK-ACCESS-TIMESTAMP": timestamp,
         "OK-ACCESS-PASSPHRASE": API_PASSPHRASE
     }
+
     response = requests.post(url, json=body, headers=headers)
     return response.json()
