@@ -47,5 +47,3 @@ def analyze_market(message):
 def execute_trade(call):
     # заглушка — можно подключить функцию place_order
     bot.send_message(call.message.chat.id, "🛠 Ордер будет отправлен (реализация в main.py)")
-
-bot.infinity_polling()
