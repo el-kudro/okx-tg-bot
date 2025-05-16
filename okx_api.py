@@ -5,6 +5,7 @@ import base64
 import hashlib
 import requests
 import json
+from datetime import datetime, timezone 
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -20,7 +21,7 @@ def _signature(timestamp, method, request_path, body=""):
 
 def place_order(inst_id, side, px, ord_type, sz):
     url = "https://www.okx.com/api/v5/trade/order"
-    timestamp = requests.get("https://www.okx.com/api/v5/public/time").json()["data"][0]["ts"]
+    timestamp = datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
     body = {
         "instId": inst_id,
         "tdMode": "cross",
