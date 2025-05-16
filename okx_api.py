@@ -20,7 +20,7 @@ def _signature(timestamp, method, request_path, body=""):
 
 def place_order(inst_id, side, px, ord_type, sz):
     url = "https://www.okx.com/api/v5/trade/order"
-    timestamp = str(time.time())
+    timestamp = requests.get("https://www.okx.com/api/v5/public/time").json()["data"][0]["ts"]
     body = {
         "instId": inst_id,
         "tdMode": "cross",
