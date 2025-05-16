@@ -8,22 +8,28 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 
 def get_trade_signal(symbol="ETH"):
     prompt = f"""
-Ты — профессиональный трейдер. Проанализируй {symbol}/USDT и сформируй точку входа в сделку.
-Укажи:
-- направление (лонг или шорт)
-- цену входа
-- стоп-лосс
-- тейк-профит
-- кратко причину
-Форматируй как Telegram-сообщение.
-"""
+    Ты — опытный трейдер. Проанализируй {symbol}/USDT и выбери оптимальную точку входа.
+    Верни:
+    - направление (лонг или шорт)
+    - цену входа
+    - тейк-профит
+    - стоп-лосс
+    - краткую причину
+
+    Формат:
+    Сигнал: ЛОНГ по BTC
+    Вход: 61250
+    Тейк: 62800
+    Стоп: 60500
+    Причина: RSI < 30 + уровень поддержки + разворотная свеча
+    """
 
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.3
+            temperature=0.4
         )
         return response["choices"][0]["message"]["content"]
     except Exception as e:
-        return f"⚠️ Ошибка при запросе сигнала: {e}"
+        return f"⚠️ Ошибка анализа {symbol}: {e}"
