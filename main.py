@@ -149,4 +149,7 @@ def execute_trade(call):
 
 # Start scanning in background
 threading.Thread(target=auto_market_scan).start()
-bot.infinity_polling()
+try:
+    bot.infinity_polling()
+except Exception as e:
+    print(f"❌ Telegram polling error: {e}")
