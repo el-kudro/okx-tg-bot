@@ -3,7 +3,7 @@ import telebot
 from dotenv import load_dotenv
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from gpt_signal_bot import get_trade_signal
-from okx_api import place_order
+from okx_api import place_order, get_account_balance
 import threading
 import time
 import itertools
@@ -16,13 +16,45 @@ TRADE_AMOUNT = os.getenv("TRADE_AMOUNT", "0.01")
 
 bot = telebot.TeleBot(BOT_TOKEN)
 last_signals = {}
+coin_cycle = itertools.cycle(["BTC", "ETH", "SOL"])
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.send_message(message.chat.id, "Привет! Я присылаю сигналы каждый час. Также можешь запросить вручную:\n/анализ BTC\n/анализ ETH\n/анализ SOL")
+    bot.send_message(message.chat.id, "Привет! Я присылаю сигналы каждый час. Также можешь запросить вручную:\n/анализ BTC\n/анализ ETH\n/анализ SOL\n\nПоказать баланс: /баланс")
 
-# 🔁 Монеты по очереди для автоматического анализа
-coin_cycle = itertools.cycle(["BTC", "ETH", "SOL"])
+@bot.message_handler(func=lambda message: message.text.lower().startswith('/анализ '))
+def manual_analysis(message):
+    parts = message.text.strip().split()
+    if len(parts) < 2:
+        bot.send_message(message.chat.id, "Напиши так: /анализ BTC или ETH или SOL")
+        return
+
+    coin = parts[1].upper()
+    if coin not in ["BTC", "ETH", "SOL"]:
+        bot.send_message(message.chat.id, "Допустимые монеты: BTC, ETH, SOL")
+        return
+
+    bot.send_message(message.chat.id, f"Запрашиваю анализ по {coin}...")
+    signal = get_trade_signal(coin)
+    send_signal_to_user(message.chat.id, coin, signal)
+
+@bot.message_handler(commands=['баланс'])
+def show_balance(message):
+    data = get_account_balance()
+    try:
+        balances = data["data"][0]["details"]
+        filtered = [b for b in balances if b["ccy"] in ["USDT", "BTC", "ETH", "SOL"] and float(b["availBal"]) > 0]
+        if not filtered:
+            bot.send_message(message.chat.id, "На счету пусто или нет поддерживаемых активов.")
+            return
+
+        msg = "💰 Текущий баланс:\n"
+        for b in filtered:
+            msg += f"{b['ccy']}: {b['availBal']}\n"
+        bot.send_message(message.chat.id, msg)
+
+    except Exception as e:
+        bot.send_message(message.chat.id, f"⚠️ Ошибка при получении баланса: {e}")
 
 def send_signal_to_user(user_id, coin, signal):
     price = None
@@ -49,24 +81,6 @@ def send_signal_to_user(user_id, coin, signal):
         full_signal = f"{signal}\n\n📊 {probability if '%' in probability else 'Вероятность успеха: ~70%'}"
         bot.send_message(user_id, full_signal, reply_markup=markup)
 
-# ✅ Ручной анализ
-@bot.message_handler(func=lambda message: message.text.lower().startswith('/анализ '))
-def manual_analysis(message):
-    parts = message.text.strip().split()
-    if len(parts) < 2:
-        bot.send_message(message.chat.id, "Напиши так: /анализ BTC или ETH или SOL")
-        return
-
-    coin = parts[1].upper()
-    if coin not in ["BTC", "ETH", "SOL"]:
-        bot.send_message(message.chat.id, "Допустимые монеты: BTC, ETH, SOL")
-        return
-
-    bot.send_message(message.chat.id, f"Запрашиваю анализ по {coin}...")
-    signal = get_trade_signal(coin)
-    send_signal_to_user(message.chat.id, coin, signal)
-
-# ✅ Автоматический анализ каждый час
 def auto_market_scan():
     while True:
         coin = next(coin_cycle)
@@ -74,7 +88,6 @@ def auto_market_scan():
         send_signal_to_user(TELEGRAM_USER_ID, coin, signal)
         time.sleep(3600)
 
-# ✅ Обработка кнопки
 @bot.callback_query_handler(func=lambda call: call.data.startswith("enter_trade_"))
 def execute_trade(call):
     user_id = call.message.chat.id
@@ -97,8 +110,5 @@ def execute_trade(call):
 
     bot.send_message(call.message.chat.id, f"✅ Ордер отправлен по {inst_id}: {response}")
 
-# 🔁 Запуск автоанализа
 threading.Thread(target=auto_market_scan).start()
-
-# ▶️ Запуск Telegram-бота
 bot.infinity_polling()
