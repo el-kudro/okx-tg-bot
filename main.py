@@ -11,25 +11,25 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from gpt_signal_bot import get_trade_signal
 from okx_api import place_order, get_account_balance
 
-# Загрузка переменных
+# Загрузка переменных из .env или Render Env Vars
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # https://your-app.onrender.com
 TELEGRAM_USER_ID = int(os.getenv("TELEGRAM_USER_ID", "0"))
 TRADE_AMOUNT = os.getenv("TRADE_AMOUNT", "0.01")
 
-# Инициализация Flask и Telebot
-app = Flask(__name__)
 bot = telebot.TeleBot(BOT_TOKEN)
+app = Flask(__name__)
 coin_cycle = itertools.cycle(["BTC", "ETH", "SOL"])
 last_signals = {}
 
-# Webhook: обработка входящих обновлений
+# ВЕБХУК Маршрут (Telegram будет сюда слать POST-запросы)
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
     try:
         update = telebot.types.Update.de_json(request.stream.read().decode("utf-8"))
         bot.process_new_updates([update])
+        print("✅ Update received and processed.")
     except Exception as e:
         print(f"❌ Webhook error: {e}")
     return "OK", 200
@@ -37,7 +37,8 @@ def webhook():
 # Команда /start
 @bot.message_handler(commands=['start'])
 def handle_start(message):
-    bot.send_message(message.chat.id, "✅ Bot is online!\nUse /analyze BTC or /balance.")
+    print(f"📩 /start от {message.chat.id}")
+    bot.send_message(message.chat.id, "✅ Bot is online!\nUse /analyze BTC | ETH | SOL or /balance")
 
 # Команда /balance
 @bot.message_handler(commands=['balance'])
@@ -45,7 +46,7 @@ def handle_balance(message):
     try:
         data = get_account_balance()
         if not data or "data" not in data:
-            bot.send_message(message.chat.id, "❌ OKX balance fetch error.")
+            bot.send_message(message.chat.id, "❌ OKX balance error.")
             return
 
         balances = data["data"][0].get("details", [])
@@ -57,9 +58,8 @@ def handle_balance(message):
         if msg.strip() == "💰 Balance:":
             msg += "Empty wallet."
         bot.send_message(message.chat.id, msg)
-
     except Exception as e:
-        bot.send_message(message.chat.id, f"❌ Balance error: {e}")
+        bot.send_message(message.chat.id, f"❌ Error parsing balance: {e}")
 
 # Команда /analyze <coin>
 @bot.message_handler(func=lambda m: m.text.lower().startswith("/analyze"))
@@ -89,7 +89,7 @@ def send_signal_to_user(user_id, coin, signal):
     markup.add(InlineKeyboardButton(f"✅ Enter trade {coin}", callback_data=f"enter_trade_{coin.lower()}"))
     bot.send_message(user_id, signal, reply_markup=markup)
 
-# Обработка кнопки входа в сделку
+# Обработка нажатия кнопки
 @bot.callback_query_handler(func=lambda call: call.data.startswith("enter_trade_"))
 def handle_trade(call):
     data = last_signals.get(call.message.chat.id)
@@ -106,7 +106,7 @@ def handle_trade(call):
     )
     bot.send_message(call.message.chat.id, f"✅ Order sent: {response}")
 
-# Фоновый автосканнер
+# Фоновый анализ рынка
 def auto_market_scan():
     while True:
         coin = next(coin_cycle)
@@ -127,9 +127,10 @@ def auto_market_scan():
 
         time.sleep(3600)
 
-# Запуск Webhook и Flask-сервера
-if __name__ == "__main__":
-    bot.remove_webhook()
-    bot.set_webhook(url=f"{WEBHOOK_URL.rstrip('/')}/{BOT_TOKEN}")
-    threading.Thread(target=auto_market_scan).start()
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+# ВАЖНО: вызываем set_webhook и автоскан ВНЕ __main__
+bot.remove_webhook()
+bot.set_webhook(url=f"{WEBHOOK_URL.rstrip('/')}/{BOT_TOKEN}")
+print("✅ Webhook set!")
+
+# Запускаем скан в фоне
+threading.Thread(target=auto_market_scan).start()
