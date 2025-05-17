@@ -1,11 +1,13 @@
 import os
 import telebot
+import requests
+import sys
+import time
 from dotenv import load_dotenv
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from gpt_signal_bot import get_trade_signal
 from okx_api import place_order, get_account_balance
 import threading
-import time
 import itertools
 from datetime import datetime
 
@@ -18,6 +20,17 @@ TRADE_AMOUNT = os.getenv("TRADE_AMOUNT", "0.01")
 bot = telebot.TeleBot(BOT_TOKEN)
 last_signals = {}
 coin_cycle = itertools.cycle(["BTC", "ETH", "SOL"])
+
+def delete_webhook_and_wait():
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook"
+    try:
+        print("🧹 Deleting old webhook...")
+        res = requests.get(url)
+        print(f"Webhook deleted, status code: {res.status_code}")
+        time.sleep(2)
+    except Exception as e:
+        print(f"❌ Failed to delete webhook: {e}")
+        sys.exit(1)
 
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -109,7 +122,6 @@ def auto_market_scan():
                     probability = 0
                 break
 
-        # Проверка по времени (10:00–23:00)
         restricted_start = datetime.strptime("10:00", "%H:%M").time()
         restricted_end = datetime.strptime("23:00", "%H:%M").time()
 
@@ -123,7 +135,7 @@ def auto_market_scan():
             send_signal_to_user(TELEGRAM_USER_ID, coin, signal)
             print(f"✅ [NIGHT] {coin} | {probability}% sent")
 
-        time.sleep(30)  # ← заменить на 3600 после тестов
+        time.sleep(30)  # ← можно поменять на 3600 после тестов
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("enter_trade_"))
 def execute_trade(call):
@@ -147,8 +159,13 @@ def execute_trade(call):
 
     bot.send_message(call.message.chat.id, f"✅ Order sent to {inst_id}: {response}")
 
-# Start scanning in background
+# 🧹 Удаляем старый webhook
+delete_webhook_and_wait()
+
+# 🚀 Запуск автоанализа
 threading.Thread(target=auto_market_scan).start()
+
+# 🔄 Запуск бота (с защитой)
 try:
     bot.infinity_polling()
 except Exception as e:
