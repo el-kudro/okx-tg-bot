@@ -1,172 +1,74 @@
 import os
+from flask import Flask, request
 import telebot
-import requests
-import sys
-import time
 from dotenv import load_dotenv
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from gpt_signal_bot import get_trade_signal
 from okx_api import place_order, get_account_balance
-import threading
-import itertools
-from datetime import datetime
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 TELEGRAM_USER_ID = os.getenv("TELEGRAM_USER_ID")
 TRADE_AMOUNT = os.getenv("TRADE_AMOUNT", "0.01")
 
 bot = telebot.TeleBot(BOT_TOKEN)
+app = Flask(__name__)
 last_signals = {}
-coin_cycle = itertools.cycle(["BTC", "ETH", "SOL"])
 
-def delete_webhook_and_wait():
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook"
-    try:
-        print("🧹 Deleting old webhook...")
-        res = requests.get(url)
-        print(f"Webhook deleted, status code: {res.status_code}")
-        time.sleep(2)
-    except Exception as e:
-        print(f"❌ Failed to delete webhook: {e}")
-        sys.exit(1)
+@app.route(f"/{BOT_TOKEN}", methods=['POST'])
+def webhook():
+    json_str = request.get_data().decode('UTF-8')
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return '', 200
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.send_message(message.chat.id, "Hello! I send signals every hour (currently every 30 sec for testing).\nCommands:\n/analyze BTC\n/analyze ETH\n/analyze SOL\n/balance")
+    bot.send_message(message.chat.id, "🚀 Bot is active via Webhook. Use /analyze, /balance.")
 
-@bot.message_handler(func=lambda message: message.text.lower().startswith('/analyze '))
-def manual_analysis(message):
-    parts = message.text.strip().split()
-    if len(parts) < 2:
-        bot.send_message(message.chat.id, "Use: /analyze BTC or ETH or SOL")
-        return
-
-    coin = parts[1].upper()
-    if coin not in ["BTC", "ETH", "SOL"]:
-        bot.send_message(message.chat.id, "Allowed coins: BTC, ETH, SOL")
-        return
-
-    bot.send_message(message.chat.id, f"Analyzing {coin}...")
+@bot.message_handler(commands=['analyze'])
+def analyze(message):
+    coin = "ETH"
     signal = get_trade_signal(coin)
-    send_signal_to_user(message.chat.id, coin, signal)
+    if signal:
+        last_signals[message.chat.id] = {"inst_id": f"{coin}-USDT", "price": extract_entry_price(signal)}
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton(f"✅ Enter {coin}", callback_data="enter_trade"))
+        bot.send_message(message.chat.id, signal, reply_markup=markup)
+    else:
+        bot.send_message(message.chat.id, "⚠️ No signal generated.")
 
 @bot.message_handler(commands=['balance'])
-def show_balance(message):
+def balance(message):
     data = get_account_balance()
     try:
-        if not data or "data" not in data:
-            bot.send_message(message.chat.id, f"⚠️ OKX error: {data.get('msg', 'Unknown error')}")
-            return
-
-        balances = data["data"][0]["details"]
-        filtered = [b for b in balances if b["ccy"] in ["USDT", "BTC", "ETH", "SOL"] and float(b["availBal"]) > 0]
-        if not filtered:
-            bot.send_message(message.chat.id, "Wallet is empty or has no supported assets.")
-            return
-
-        msg = "💰 Current balance:\n"
-        for b in filtered:
-            msg += f"{b['ccy']}: {b['availBal']}\n"
-        bot.send_message(message.chat.id, msg)
-
-    except Exception as e:
-        bot.send_message(message.chat.id, f"⚠️ Error parsing balance: {e}")
-
-def send_signal_to_user(user_id, coin, signal):
-    price = None
-    probability_line = "?"
-    probability_value = 0
-
-    try:
-        for line in signal.split("\n"):
-            if "вход" in line.lower() or "entry" in line.lower():
-                numbers = [s for s in line.split() if s.replace('.', '', 1).isdigit()]
-                if numbers:
-                    price = numbers[0]
-            if "%" in line or "probab" in line.lower() or "вероят" in line.lower():
-                probability_line = line.strip()
-                digits = ''.join([c for c in line if c.isdigit()])
-                try:
-                    probability_value = int(digits)
-                except:
-                    probability_value = 0
+        balances = data.get("data", [])[0].get("details", [])
+        filtered = [b for b in balances if float(b.get("availBal", 0)) > 0]
+        msg = "💰 Balance:\n" + "\n".join(f"{b['ccy']}: {b['availBal']}" for b in filtered)
+        bot.send_message(message.chat.id, msg or "Empty wallet.")
     except:
-        price = None
+        bot.send_message(message.chat.id, "⚠️ Balance error.")
 
-    if signal and price:
-        inst_id = f"{coin}-USDT"
-        last_signals[user_id] = {"inst_id": inst_id, "price": price}
-
-        markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton(f"✅ Enter trade {coin}", callback_data=f"enter_trade_{coin.lower()}"))
-
-        full_signal = f"{signal}\n\n📊 {probability_line if '%' in probability_line else 'Success probability: ~70%'}"
-        bot.send_message(user_id, full_signal, reply_markup=markup)
-
-def auto_market_scan():
-    while True:
-        coin = next(coin_cycle)
-        now = datetime.now().time()
-        signal = get_trade_signal(coin)
-
-        # Извлекаем вероятность
-        probability = 0
-        for line in signal.split("\n"):
-            if "%" in line:
-                digits = ''.join([c for c in line if c.isdigit()])
-                try:
-                    probability = int(digits)
-                except:
-                    probability = 0
-                break
-
-        restricted_start = datetime.strptime("10:00", "%H:%M").time()
-        restricted_end = datetime.strptime("23:00", "%H:%M").time()
-
-        if restricted_start <= now <= restricted_end:
-            if probability >= 90:
-                send_signal_to_user(TELEGRAM_USER_ID, coin, signal)
-                print(f"✅ [HIGH PROB] {coin} | {probability}% sent")
-            else:
-                print(f"⏸ {coin} skipped ({probability}%) during restricted hours")
-        else:
-            send_signal_to_user(TELEGRAM_USER_ID, coin, signal)
-            print(f"✅ [NIGHT] {coin} | {probability}% sent")
-
-        time.sleep(30)  # ← можно поменять на 3600 после тестов
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("enter_trade_"))
+@bot.callback_query_handler(func=lambda call: call.data == "enter_trade")
 def execute_trade(call):
-    user_id = call.message.chat.id
-    data = last_signals.get(user_id)
-
+    data = last_signals.get(call.message.chat.id)
     if not data:
         bot.send_message(call.message.chat.id, "⚠️ Signal not found.")
         return
+    response = place_order(data["inst_id"], "buy", data["price"], "market", TRADE_AMOUNT)
+    bot.send_message(call.message.chat.id, f"✅ Order sent: {response}")
 
-    inst_id = data["inst_id"]
-    price = data["price"] or "market"
+def extract_entry_price(text):
+    for line in text.split("\n"):
+        if "entry" in line.lower() or "вход" in line.lower():
+            for word in line.split():
+                if word.replace(".", "", 1).isdigit():
+                    return word
+    return "market"
 
-    response = place_order(
-        inst_id=inst_id,
-        side="buy",
-        px=price,
-        ord_type="market",
-        sz=TRADE_AMOUNT
-    )
-
-    bot.send_message(call.message.chat.id, f"✅ Order sent to {inst_id}: {response}")
-
-# 🧹 Удаляем старый webhook
-delete_webhook_and_wait()
-
-# 🚀 Запуск автоанализа
-threading.Thread(target=auto_market_scan).start()
-
-# 🔄 Запуск бота (с защитой)
-try:
-    bot.infinity_polling()
-except Exception as e:
-    print(f"❌ Telegram polling error: {e}")
+if __name__ == "__main__":
+    bot.remove_webhook()
+    bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
+    app.run(host="0.0.0.0", port=int(os.environ.get('PORT', 5000)))
