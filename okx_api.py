@@ -48,3 +48,18 @@ def place_order(inst_id, side, px, ord_type, sz):
 
     response = requests.post(url, json=body, headers=headers)
     return response.json()
+
+def get_account_balance():
+    url = "https://www.okx.com/api/v5/account/balance"
+    timestamp = _get_server_timestamp()
+
+    headers = {
+        "Content-Type": "application/json",
+        "OK-ACCESS-KEY": API_KEY,
+        "OK-ACCESS-SIGN": _signature(timestamp, "GET", "/api/v5/account/balance"),
+        "OK-ACCESS-TIMESTAMP": timestamp,
+        "OK-ACCESS-PASSPHRASE": API_PASSPHRASE
+    }
+
+    response = requests.get(url, headers=headers)
+    return response.json()
