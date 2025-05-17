@@ -21,10 +21,28 @@ last_signals = {}
 def start(message):
     bot.send_message(message.chat.id, "Привет! Я пришлю сигнал, когда будет сильная точка входа. 🧠")
 
+@bot.message_handler(commands=['тест'])
+def test_signal(message):
+    signal = """📈 Сигнал: ЛОНГ по ETH
+Вход: 2500
+Тейк: 2550
+Стоп: 2470
+Причина: тестовая сделка для проверки"""
+
+    inst_id = "ETH-USDT"
+    last_signals[message.chat.id] = {"inst_id": inst_id, "price": "2500"}
+
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("✅ Войти в сделку по ETH", callback_data="enter_trade_eth"))
+
+    bot.send_message(message.chat.id, signal, reply_markup=markup)
+
 # 📈 Автоматический анализ рынка каждые 30 минут
 def auto_market_scan():
     while True:
         coins = ["ETH", "BTC", "SOL"]
+        signal_sent = False
+
         for coin in coins:
             signal = get_trade_signal(coin)
             price = None
@@ -47,7 +65,11 @@ def auto_market_scan():
                 markup.add(InlineKeyboardButton(f"✅ Войти в сделку по {coin}", callback_data=f"enter_trade_{coin.lower()}"))
 
                 bot.send_message(TELEGRAM_USER_ID, signal, reply_markup=markup)
+                signal_sent = True
                 break  # Отправляем только один сигнал за цикл
+
+        if not signal_sent:
+            bot.send_message(TELEGRAM_USER_ID, "🔍 Подходящий сигнал не обнаружен")
 
         time.sleep(1800)  # 30 минут
 
