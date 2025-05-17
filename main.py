@@ -11,7 +11,6 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from gpt_signal_bot import get_trade_signal
 from okx_api import place_order, get_account_balance
 
-# Загрузка переменных окружения
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -24,12 +23,10 @@ app = Flask(__name__)
 coin_cycle = itertools.cycle(["BTC", "ETH", "SOL"])
 last_signals = {}
 
-# Команда /start
 @bot.message_handler(commands=['start'])
 def start(message):
     bot.send_message(message.chat.id, "🤖 Bot is active and listening via Webhook!\nUse /analyze or /balance")
 
-# Команда /balance
 @bot.message_handler(commands=['balance'])
 def show_balance(message):
     data = get_account_balance()
@@ -51,7 +48,6 @@ def show_balance(message):
     except Exception as e:
         bot.send_message(message.chat.id, f"⚠️ Error parsing balance: {e}")
 
-# Команда /analyze <COIN>
 @bot.message_handler(func=lambda message: message.text.lower().startswith('/analyze '))
 def manual_analysis(message):
     parts = message.text.strip().split()
@@ -68,14 +64,12 @@ def manual_analysis(message):
     signal = get_trade_signal(coin)
     send_signal_to_user(message.chat.id, coin, signal)
 
-# Фоновый анализ рынка
 def auto_market_scan():
     while True:
         coin = next(coin_cycle)
         now = datetime.now().time()
         signal = get_trade_signal(coin)
 
-        # Извлекаем вероятность
         probability = 0
         for line in signal.split("\n"):
             if "%" in line:
@@ -86,7 +80,6 @@ def auto_market_scan():
                     probability = 0
                 break
 
-        # Ограничение по времени
         restricted_start = datetime.strptime("10:00", "%H:%M").time()
         restricted_end = datetime.strptime("23:00", "%H:%M").time()
 
@@ -96,14 +89,11 @@ def auto_market_scan():
         else:
             send_signal_to_user(TELEGRAM_USER_ID, coin, signal)
 
-        time.sleep(3600)  # 1 час
+        time.sleep(3600)
 
-# Отправка сигнала с кнопкой
 def send_signal_to_user(user_id, coin, signal):
     price = None
     probability_line = "?"
-    probability_value = 0
-
     try:
         for line in signal.split("\n"):
             if "entry" in line.lower() or "вход" in line.lower():
@@ -112,11 +102,6 @@ def send_signal_to_user(user_id, coin, signal):
                     price = numbers[0]
             if "%" in line or "probab" in line.lower():
                 probability_line = line.strip()
-                digits = ''.join([c for c in line if c.isdigit()])
-                try:
-                    probability_value = int(digits)
-                except:
-                    probability_value = 0
     except:
         price = None
 
@@ -127,10 +112,9 @@ def send_signal_to_user(user_id, coin, signal):
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton(f"✅ Enter trade {coin}", callback_data=f"enter_trade_{coin.lower()}"))
 
-        full_signal = f"{signal}\n\n📊 {probability_line if '%' in probability_line else 'Success probability: ~70%'}"
+        full_signal = f"{signal}\n\n📊 {probability_line}"
         bot.send_message(user_id, full_signal, reply_markup=markup)
 
-# Обработка нажатия кнопки
 @bot.callback_query_handler(func=lambda call: call.data.startswith("enter_trade_"))
 def execute_trade(call):
     user_id = call.message.chat.id
@@ -153,7 +137,6 @@ def execute_trade(call):
 
     bot.send_message(user_id, f"✅ Order sent to {inst_id}: {response}")
 
-# Webhook маршрут для Telegram
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def receive_update():
     json_str = request.get_data().decode("utf-8")
@@ -161,12 +144,8 @@ def receive_update():
     bot.process_new_updates([update])
     return "!", 200
 
-# Установка Webhook и запуск Flask
 if __name__ == "__main__":
     bot.remove_webhook()
-    bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
-
-    # Запускаем фоновый анализ
+    bot.set_webhook(url=f"{WEBHOOK_URL.rstrip('/')}/{BOT_TOKEN}")
     threading.Thread(target=auto_market_scan).start()
-
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
