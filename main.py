@@ -21,7 +21,7 @@ last_signals = {}
 def start(message):
     bot.send_message(message.chat.id, "Привет! Я пришлю сигнал, когда будет сильная точка входа. 🧠")
 
-@bot.message_handler(commands=['тест'])
+@bot.message_handler(commands=['test'])
 def test_signal(message):
     signal = """📈 Сигнал: ЛОНГ по ETH
 Вход: 2500
