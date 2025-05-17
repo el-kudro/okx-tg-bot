@@ -23,7 +23,6 @@ def get_trade_signal(symbol="ETH"):
     Reason: Support + RSI oversold
     Probability: 82%
     """
-
     try:
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
