@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 import time
 import random
 
-# Загрузка переменных среды
+# Загрузка .env
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
@@ -15,16 +15,17 @@ TRADE_AMOUNT = float(os.getenv("TRADE_AMOUNT", "0.01"))
 # Инициализация бота и Flask
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
-
-# Время последнего сигнала
 last_signal_time = 0
-
-# === Хендлеры ===
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     print(f">>> /start от {message.chat.id}")
-    bot.send_message(message.chat.id, "✅ Бот работает. Готов к сигналам.")
+    bot.send_message(message.chat.id, "✅ Бот запущен и готов к работе.")
+
+@bot.message_handler(commands=['balance'])
+def handle_balance(message):
+    print(f">>> /balance от {message.chat.id}")
+    bot.send_message(message.chat.id, "💰 Баланс пока не подключен.")
 
 @bot.message_handler(commands=['signal'])
 def handle_signal(message):
@@ -34,17 +35,11 @@ def handle_signal(message):
         return
     send_trade_signal()
 
-@bot.message_handler(commands=['balance'])
-def handle_balance(message):
-    print(f">>> /balance от {message.chat.id}")
-    bot.send_message(message.chat.id, "💰 Баланс пока не подключён.")
-
 def send_trade_signal():
     global last_signal_time
     now = time.time()
-
-    # Если прошло менее 3600 секунд (1 час) и вероятность < 90%, не отправляем сигнал
     probability = round(random.uniform(80, 99), 2)
+
     if probability < 90 and now - last_signal_time < 3600:
         print("⏳ Сигнал пропущен: вероятность < 90% и лимит 1 в час")
         return
@@ -52,12 +47,12 @@ def send_trade_signal():
     last_signal_time = now
     symbol = random.choice(['BTC', 'ETH', 'SOL'])
     direction = random.choice(['LONG', 'SHORT'])
-    entry_price = round(random.uniform(25000, 35000), 2)
-    tp = round(entry_price * (1.01 if direction == 'LONG' else 0.99), 2)
-    sl = round(entry_price * (0.99 if direction == 'LONG' else 1.01), 2)
+    entry = round(random.uniform(25000, 35000), 2)
+    tp = round(entry * (1.01 if direction == 'LONG' else 0.99), 2)
+    sl = round(entry * (0.99 if direction == 'LONG' else 1.01), 2)
 
     msg = f"""📢 <b>{symbol} {direction}</b>
-💰 Цена входа: {entry_price}
+💰 Цена входа: {entry}
 🎯 TP: {tp}
 🛑 SL: {sl}
 📊 Уверенность: {probability}%
@@ -65,14 +60,12 @@ def send_trade_signal():
     bot.send_message(TELEGRAM_USER_ID, msg, parse_mode='HTML')
     print("✅ Сигнал отправлен")
 
-# === Webhook endpoint ===
-
 @app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def webhook():
     try:
         json_str = request.get_data().decode('utf-8')
         update = telebot.types.Update.de_json(json_str)
-        print(">>> [Webhook] Update received!")
+        print(">>> [Webhook] Update received")
         if update.message:
             print(f">>> Message received: {update.message.text}")
         bot.process_new_updates([update])
@@ -80,11 +73,9 @@ def webhook():
         print(f"❌ Ошибка обработки Webhook: {e}")
     return "ok", 200
 
-# === Запуск сервера ===
-
 if __name__ == "__main__":
     print(f"[BOOT] BOT_TOKEN: {BOT_TOKEN}")
     print(f"[BOOT] WEBHOOK_URL: {WEBHOOK_URL}")
     print(f"[BOOT] TELEGRAM_USER_ID: {TELEGRAM_USER_ID}")
     print(f"[BOOT] TRADE_AMOUNT: {TRADE_AMOUNT}")
-    app.run(host="0.0.0.0", port=10000, threaded=True)
+    app.run(host='0.0.0.0', port=10000, threaded=True)
