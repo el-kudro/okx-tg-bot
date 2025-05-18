@@ -38,7 +38,6 @@ def send_trade_signal():
     global last_signal_time
     now = time.time()
 
-    # Если прошло менее 3600 секунд (1 час) и вероятность < 90%, не отправляем сигнал
     probability = round(random.uniform(80, 99), 2)
     if probability < 90 and now - last_signal_time < 3600:
         print("⏳ Сигнал пропущен: вероятность < 90% и лимит 1 в час")
@@ -60,19 +59,18 @@ def send_trade_signal():
     bot.send_message(TELEGRAM_USER_ID, msg, parse_mode='HTML')
     print("✅ Сигнал отправлен")
 
-# === Обработка Webhook ===
+# === Webhook ===
 
 @app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def webhook():
     try:
-        json_str = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_str)
+        update = telebot.types.Update.de_json(request.stream.read().decode("utf-8"))
         print(">>> [Webhook] Update received!")
         if update.message:
             print(f">>> Message received: {update.message.text}")
         bot.process_new_updates([update])
     except Exception as e:
-        print(f"❌ Ошибка обработки Webhook: {e}")
+        print(f"❌ Ошибка Webhook: {e}")
     return "ok", 200
 
 # === Точка входа ===
@@ -82,4 +80,12 @@ if __name__ == "__main__":
     print(f"[BOOT] WEBHOOK_URL: {WEBHOOK_URL}")
     print(f"[BOOT] TELEGRAM_USER_ID: {TELEGRAM_USER_ID}")
     print(f"[BOOT] TRADE_AMOUNT: {TRADE_AMOUNT}")
-    app.run(host='0.0.0.0', port=10000)
+
+    # Установка webhook
+    webhook_url = f"{WEBHOOK_URL}/{BOT_TOKEN}"
+    bot.remove_webhook()
+    time.sleep(1)  # чтобы Telegram успел обработать удаление
+    bot.set_webhook(url=webhook_url)
+    print(f"✅ Webhook установлен: {webhook_url}")
+
+    app.run(host="0.0.0.0", port=10000)
