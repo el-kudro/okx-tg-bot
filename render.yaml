@@ -3,7 +3,7 @@ services:
     name: okx-tg-bot2
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn main:app
+    startCommand: python main.py  # вместо gunicorn!
     envVars:
       - key: PORT
-        value: 5000
+        value: 10000
