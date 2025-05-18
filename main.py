@@ -5,21 +5,21 @@ from dotenv import load_dotenv
 import time
 import random
 
-# Загрузка переменных из .env
+# Загрузка переменных среды
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 TELEGRAM_USER_ID = int(os.getenv("TELEGRAM_USER_ID", "0"))
 TRADE_AMOUNT = float(os.getenv("TRADE_AMOUNT", "0.01"))
 
-# Инициализация Flask и Telebot
+# Инициализация бота и Flask
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
-# Метка времени последнего сигнала
+# Отметка времени последнего сигнала
 last_signal_time = 0
 
-# === Хендлеры команд ===
+# === Хендлеры ===
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
@@ -34,14 +34,14 @@ def handle_signal(message):
         return
     send_trade_signal()
 
-# === Функция генерации сигнала ===
-
 def send_trade_signal():
     global last_signal_time
     now = time.time()
 
-    # Если сигнал слишком скоро и вероятность < 90%, не отправляем
+    # Генерация вероятности
     probability = round(random.uniform(80, 99), 2)
+
+    # Ограничение 1 сигнал в час, если < 90%
     if probability < 90 and now - last_signal_time < 3600:
         print("⏳ Сигнал пропущен: вероятность < 90% и лимит 1 в час")
         return
@@ -57,12 +57,12 @@ def send_trade_signal():
 💰 Цена входа: {entry_price}
 🎯 TP: {tp}
 🛑 SL: {sl}
-📊 Уверенность: {probability}%"""
-    
-    print(f"✅ Отправка сигнала:\n{msg}")
+📊 Уверенность: {probability}%
+"""
     bot.send_message(TELEGRAM_USER_ID, msg, parse_mode='HTML')
+    print("✅ Сигнал отправлен")
 
-# === Webhook обработка ===
+# === Webhook — приём обновлений от Telegram ===
 
 @app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def webhook():
@@ -77,7 +77,7 @@ def webhook():
         print(f"❌ Ошибка обработки Webhook: {e}")
     return "ok", 200
 
-# === Запуск приложения ===
+# === Точка входа ===
 
 if __name__ == "__main__":
     print(f"[BOOT] BOT_TOKEN: {BOT_TOKEN}")
@@ -93,5 +93,6 @@ if __name__ == "__main__":
     else:
         print("❌ Не удалось установить Webhook")
 
-    # Запуск Flask с threaded=True
-    app.run(host="0.0.0.0", port=10000, threaded=True)
+    # Получаем порт от Render (по умолчанию 5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, threaded=True)
