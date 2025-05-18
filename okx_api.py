@@ -13,9 +13,9 @@ API_KEY = os.getenv("OKX_API_KEY")
 API_SECRET = os.getenv("OKX_API_SECRET")
 API_PASSPHRASE = os.getenv("OKX_API_PASSPHRASE")
 
-def _signature(timestamp, method, request_path, body=""):
-    message = f"{timestamp}{method}{request_path}{body}"
-    mac = hmac.new(API_SECRET.encode(), message.encode(), hashlib.sha256)
+def _signature(timestamp, method, path, body=""):
+    msg = f"{timestamp}{method}{path}{body}"
+    mac = hmac.new(API_SECRET.encode(), msg.encode(), hashlib.sha256)
     return base64.b64encode(mac.digest()).decode()
 
 def _headers(timestamp, method, path, body=""):
@@ -38,12 +38,9 @@ def place_order(inst_id, side, px, ord_type, sz):
         "px": px,
         "sz": sz
     })
-    headers = _headers(timestamp, "POST", "/api/v5/trade/order", body)
-    response = requests.post(url, headers=headers, data=body)
-    return response.json()
+    return requests.post(url, headers=_headers(timestamp, "POST", "/api/v5/trade/order", body), data=body).json()
 
 def get_account_balance():
     url = "https://www.okx.com/api/v5/account/balance"
     timestamp = datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
-    headers = _headers(timestamp, "GET", "/api/v5/account/balance")
-    return requests.get(url, headers=headers).json()
+    return requests.get(url, headers=_headers(timestamp, "GET", "/api/v5/account/balance")).json()
