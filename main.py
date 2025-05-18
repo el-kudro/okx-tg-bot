@@ -5,21 +5,21 @@ from dotenv import load_dotenv
 import time
 import random
 
-# Загрузка переменных среды
+# Загрузка переменных из .env
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 TELEGRAM_USER_ID = int(os.getenv("TELEGRAM_USER_ID", "0"))
 TRADE_AMOUNT = float(os.getenv("TRADE_AMOUNT", "0.01"))
 
-# Инициализация бота и Flask
+# Инициализация Flask и Telebot
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
-# Отметка времени последнего сигнала
+# Метка времени последнего сигнала
 last_signal_time = 0
 
-# === Хендлеры ===
+# === Хендлеры команд ===
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
@@ -34,10 +34,13 @@ def handle_signal(message):
         return
     send_trade_signal()
 
+# === Функция генерации сигнала ===
+
 def send_trade_signal():
     global last_signal_time
     now = time.time()
 
+    # Если сигнал слишком скоро и вероятность < 90%, не отправляем
     probability = round(random.uniform(80, 99), 2)
     if probability < 90 and now - last_signal_time < 3600:
         print("⏳ Сигнал пропущен: вероятность < 90% и лимит 1 в час")
@@ -54,26 +57,27 @@ def send_trade_signal():
 💰 Цена входа: {entry_price}
 🎯 TP: {tp}
 🛑 SL: {sl}
-📊 Уверенность: {probability}%
-"""
+📊 Уверенность: {probability}%"""
+    
+    print(f"✅ Отправка сигнала:\n{msg}")
     bot.send_message(TELEGRAM_USER_ID, msg, parse_mode='HTML')
-    print("✅ Сигнал отправлен")
 
-# === Webhook ===
+# === Webhook обработка ===
 
 @app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def webhook():
     try:
-        update = telebot.types.Update.de_json(request.stream.read().decode("utf-8"))
+        json_str = request.get_data().decode('utf-8')
+        update = telebot.types.Update.de_json(json_str)
         print(">>> [Webhook] Update received!")
         if update.message:
             print(f">>> Message received: {update.message.text}")
         bot.process_new_updates([update])
     except Exception as e:
-        print(f"❌ Ошибка Webhook: {e}")
+        print(f"❌ Ошибка обработки Webhook: {e}")
     return "ok", 200
 
-# === Точка входа ===
+# === Запуск приложения ===
 
 if __name__ == "__main__":
     print(f"[BOOT] BOT_TOKEN: {BOT_TOKEN}")
@@ -82,10 +86,12 @@ if __name__ == "__main__":
     print(f"[BOOT] TRADE_AMOUNT: {TRADE_AMOUNT}")
 
     # Установка webhook
-    webhook_url = f"{WEBHOOK_URL}/{BOT_TOKEN}"
     bot.remove_webhook()
-    time.sleep(1)  # чтобы Telegram успел обработать удаление
-    bot.set_webhook(url=webhook_url)
-    print(f"✅ Webhook установлен: {webhook_url}")
+    success = bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
+    if success:
+        print(f"✅ Webhook установлен: {WEBHOOK_URL}/{BOT_TOKEN}")
+    else:
+        print("❌ Не удалось установить Webhook")
 
-    app.run(host="0.0.0.0", port=10000)
+    # Запуск Flask с threaded=True
+    app.run(host="0.0.0.0", port=10000, threaded=True)
