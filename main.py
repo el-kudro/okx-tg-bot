@@ -11,7 +11,6 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from gpt_signal_bot import get_trade_signal
 from okx_api import place_order, get_account_balance
 
-# === Load env ===
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -34,7 +33,7 @@ def webhook():
     try:
         json_str = request.get_data().decode("utf-8")
         update = telebot.types.Update.de_json(json_str)
-        print(">>> [Webhook] Update received!")
+        print(">>> [Webhook] Обновление получено:", update.to_dict())
         bot.process_new_updates([update])
     except Exception as e:
         print(f"❌ Webhook error: {e}")
@@ -42,37 +41,37 @@ def webhook():
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    print(">>> /start received")
-    bot.send_message(message.chat.id, "✅ Bot is live. Use /analyze or /balance")
+    print(">>> /start получил!")
+    bot.send_message(message.chat.id, "✅ Бот запущен! Используй /analyze или /balance")
 
 @bot.message_handler(commands=['balance'])
 def show_balance(message):
     data = get_account_balance()
     try:
         if not data or "data" not in data:
-            bot.send_message(message.chat.id, f"⚠️ OKX error: {data.get('msg', 'Unknown error')}")
+            bot.send_message(message.chat.id, f"⚠️ Ошибка OKX: {data.get('msg', 'Unknown error')}")
             return
         balances = data["data"][0]["details"]
         filtered = [b for b in balances if b["ccy"] in ["USDT", "BTC", "ETH", "SOL"] and float(b["availBal"]) > 0]
         if not filtered:
-            bot.send_message(message.chat.id, "Wallet is empty or unsupported.")
+            bot.send_message(message.chat.id, "Кошелёк пуст или нет поддерживаемых активов.")
             return
-        msg = "💰 Balance:\n" + "\n".join([f"{b['ccy']}: {b['availBal']}" for b in filtered])
+        msg = "💰 Баланс:\n" + "\n".join([f"{b['ccy']}: {b['availBal']}" for b in filtered])
         bot.send_message(message.chat.id, msg)
     except Exception as e:
-        bot.send_message(message.chat.id, f"⚠️ Parsing error: {e}")
+        bot.send_message(message.chat.id, f"⚠️ Ошибка парсинга: {e}")
 
 @bot.message_handler(func=lambda msg: msg.text.lower().startswith("/analyze"))
 def analyze(message):
     parts = message.text.strip().split()
     if len(parts) < 2:
-        bot.send_message(message.chat.id, "Format: /analyze BTC")
+        bot.send_message(message.chat.id, "Формат: /analyze BTC")
         return
     coin = parts[1].upper()
     if coin not in ["BTC", "ETH", "SOL"]:
-        bot.send_message(message.chat.id, "Allowed: BTC, ETH, SOL")
+        bot.send_message(message.chat.id, "Разрешены только: BTC, ETH, SOL")
         return
-    bot.send_message(message.chat.id, f"Analyzing {coin}...")
+    bot.send_message(message.chat.id, f"Анализирую {coin}...")
     signal = get_trade_signal(coin)
     send_signal_to_user(message.chat.id, coin, signal)
 
@@ -94,7 +93,7 @@ def send_signal_to_user(user_id, coin, signal):
         inst_id = f"{coin}-USDT"
         last_signals[user_id] = {"inst_id": inst_id, "price": price}
         markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton(f"✅ Trade {coin}", callback_data=f"enter_trade_{coin.lower()}"))
+        markup.add(InlineKeyboardButton(f"✅ Купить {coin}", callback_data=f"enter_trade_{coin.lower()}"))
         bot.send_message(user_id, f"{signal}\n\n📊 {probability}", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("enter_trade_"))
@@ -102,7 +101,7 @@ def execute_trade(call):
     user_id = call.message.chat.id
     data = last_signals.get(user_id)
     if not data:
-        bot.send_message(user_id, "⚠️ No signal found.")
+        bot.send_message(user_id, "⚠️ Нет активного сигнала.")
         return
     inst_id = data["inst_id"]
     price = data["price"] or "market"
@@ -113,7 +112,7 @@ def execute_trade(call):
         ord_type="market",
         sz=TRADE_AMOUNT
     )
-    bot.send_message(user_id, f"✅ Order sent to {inst_id}:\n{response}")
+    bot.send_message(user_id, f"✅ Ордер отправлен на {inst_id}:\n{response}")
 
 if __name__ == "__main__":
     bot.remove_webhook()
